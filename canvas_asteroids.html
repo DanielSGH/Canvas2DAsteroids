@@ -23,10 +23,10 @@ function init() {
 	spaceshipVertices.push({x:0, y:-1});
 	spaceshipVertices.push({x:-1, y:0});
 
+	spawnSpaceship();
 	setKeyHandlers();
 
 	spawnAsteroids();
-	spawnSpaceship();
 	gameLoop();
 }
 
@@ -39,6 +39,8 @@ function setKeyHandlers() {
 			spaceship.drot = 0.2;
 		else if (code==38) // up arrow
 			spaceship.thrust = true;
+		// else if (code==32)
+		// 	checkCollision();
 	};
 
 	document.onkeyup = function(event) {
@@ -51,10 +53,11 @@ function setKeyHandlers() {
 }
 
 function spawnAsteroids() {
-	for (var i=0; i<10; i++) {
+	for (var i=0; i<1; i++) {
 		var a = {	x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
 					scale:5+Math.random()*15, 
-					dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, drot:(Math.random()-0.5)*0.2,
+					// dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, drot:(Math.random()-0.5)*0.2,
+					dx: 0, dy: 0, drot: 0,
 					vertices:asteroidVertices
 				};
 		asteroids.push(a);
@@ -67,6 +70,7 @@ function spawnSpaceship() {
 
 function gameLoop() {
 	window.setTimeout(gameLoop, 1000/30);
+	checkCollision();
 
 	ctx.fillStyle = "rgb(190,190,190)";
 	ctx.fillRect (0, 0, 600, 600);
@@ -96,6 +100,52 @@ function updateObject(o) {
 	else if (o.y>620)
 		o.y -= 640;
 	o.rot += o.drot;	
+}
+
+const checkCollision = () => {
+	asteroids.forEach(asteroid => {
+		let ref = [];
+		asteroid.vertices.forEach((v, i) => 
+			ref[i] = getTransformedVertex(v, asteroid)
+		);
+
+		const len = ref.length;
+		const calcs = [];
+
+		for (let i = 0; i < len; i++) {
+			const from = ref[i];
+			const to = ref[(i+1) % len];
+
+			const x0 = from.x;
+			const y0 = from.y;
+			const x1 = to.x;
+			const y1 = to.y;
+			
+			let arr = [];
+			spaceship.vertices.forEach((v, i) => {
+				const p = getTransformedVertex((v), spaceship);
+				// console.log((p.y-y0)*(x1-x0)-(p.x-x0)*(y1-y0));
+				arr[i] = (p.y-y0)*(x1-x0)-(p.x-x0)*(y1-y0);
+			})
+
+			calcs.push(arr);
+		}
+
+		// console.log(calcs);
+
+		for (let i = 0; i < calcs[0].length; i++) {
+			let arr = [];
+			for (let j = 0; j < calcs.length; j++) {
+				arr[j] = calcs[j][i];
+			}
+			if (Math.max.apply(Math, arr) < 0) {
+				console.log("\n\n\nCOLLISION\n\n\n");
+				return true;
+			}
+			arr = [];
+		}
+	})
+	return false;
 }
 
 function drawObject(o) {
@@ -131,7 +181,7 @@ function getTransformedVertex(vertex, object) {
 
 <body onload="init();">
 <center>
-<canvas id="canvas" width="600" height="600"></canvas>
+<canvas id="canvas" width="600" height="600" style="border: 1px solid black"></canvas>
 
 </body>
 </html>

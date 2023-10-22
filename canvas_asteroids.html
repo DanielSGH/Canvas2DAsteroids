@@ -6,6 +6,8 @@ var asteroidVertices = [];
 var asteroids = [];
 var spaceshipVertices = [];
 var spaceship;
+var bulletVertices = [];
+var bullet;
 
 function init() {
 	canvas = document.getElementById("canvas");
@@ -23,9 +25,12 @@ function init() {
 	spaceshipVertices.push({x:0, y:-1});
 	spaceshipVertices.push({x:-1, y:0});
 
+	bulletVertices.push({x: 0, y: 2});
+	bulletVertices.push({x: 0, y: 0})
+
 	spawnSpaceship();
 	setKeyHandlers();
-
+	spawnBullet();
 	spawnAsteroids();
 	gameLoop();
 }
@@ -68,9 +73,13 @@ function spawnSpaceship() {
 	spaceship = {x:300, y:300, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:spaceshipVertices, thrust:false};
 }
 
+const spawnBullet = () => {
+	bullet = {x:275, y:275, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:bulletVertices};
+}
+
 function gameLoop() {
 	window.setTimeout(gameLoop, 1000/30);
-	checkCollision(2);
+	console.log(checkCollision(2));
 
 	ctx.fillStyle = "rgb(190,190,190)";
 	ctx.fillRect (0, 0, 600, 600);
@@ -86,6 +95,8 @@ function gameLoop() {
 	}
 	updateObject(spaceship);
 	drawObject(spaceship);
+	updateObject(bullet);
+	drawObject(bullet);
 }
 
 function updateObject(o) {

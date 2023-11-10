@@ -6,8 +6,9 @@ var asteroidVertices = [];
 var asteroids = [];
 var spaceshipVertices = [];
 var spaceship;
-var bulletVertices = [];
-var bullet;
+var bulletsVertices = [];
+var bullets = [];
+const BULLET_SPEED = 15;
 
 function init() {
 	canvas = document.getElementById("canvas");
@@ -25,12 +26,11 @@ function init() {
 	spaceshipVertices.push({x:0, y:-1});
 	spaceshipVertices.push({x:-1, y:0});
 
-	bulletVertices.push({x: 0, y: 2});
-	bulletVertices.push({x: 0, y: 0})
+	bulletsVertices.push({x: 0, y: 1});
+	bulletsVertices.push({x: 0, y: 0})
 
 	spawnSpaceship();
 	setKeyHandlers();
-	spawnBullet();
 	spawnAsteroids();
 	gameLoop();
 }
@@ -44,8 +44,8 @@ function setKeyHandlers() {
 			spaceship.drot = 0.2;
 		else if (code==38) // up arrow
 			spaceship.thrust = true;
-		// else if (code==32)
-		// 	console.log(algo2());
+		else if (code==32)
+			shootBullet();
 	};
 
 	document.onkeyup = function(event) {
@@ -59,10 +59,10 @@ function setKeyHandlers() {
 
 function spawnAsteroids() {
 	for (var i=0; i<10; i++) {
-		var a = {	x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
+		var a = {	
+					x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
 					scale:5+Math.random()*15, 
 					dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, drot:(Math.random()-0.5)*0.2,
-					// dx: 0, dy: 0, drot: 0,
 					vertices:asteroidVertices
 				};
 		asteroids.push(a);
@@ -73,13 +73,36 @@ function spawnSpaceship() {
 	spaceship = {x:300, y:300, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:spaceshipVertices, thrust:false};
 }
 
-const spawnBullet = () => {
-	bullet = {x:275, y:275, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:bulletVertices};
+const shootBullet = () => {
+	const frontLocation = getTransformedVertex(spaceshipVertices[0], spaceship);
+
+	const cap = (val, max) => {
+		return val > max ? max : val;
+	}
+
+	// spawn bullet with set velocity pointing at the same direction as the spaceship and firing in that direction
+	const bullet = {
+		x: frontLocation.x, 
+		y: frontLocation.y, 
+		rot: spaceship.rot, 
+		scale: 5, 
+		dx: -Math.sin(spaceship.rot)*BULLET_SPEED,
+		dy: Math.cos(spaceship.rot)*BULLET_SPEED, 
+		drot: 0, 
+		vertices: bulletsVertices
+	}
+
+	// var bullet = {x:frontLocation.x, y:frontLocation.y, rot:spaceship.rot, scale:10, dx:0, dy:0, drot:0, vertices:bulletsVertices};
+	bullets.push(bullet);
 }
 
 function gameLoop() {
 	window.setTimeout(gameLoop, 1000/30);
-	console.log(checkCollision(2));
+	
+	// console.log(checkCollision(2));
+	raycastCheckIntersections(spaceship, asteroids);
+	raycastCheckIntersections(bullets, asteroids);
+	
 
 	ctx.fillStyle = "rgb(190,190,190)";
 	ctx.fillRect (0, 0, 600, 600);
@@ -88,6 +111,7 @@ function gameLoop() {
 		updateObject(asteroids[i]);	
 		drawObject(asteroids[i]);
 	}
+	
 
 	if (spaceship.thrust) {
 		spaceship.dx -= Math.sin(spaceship.rot);
@@ -95,8 +119,12 @@ function gameLoop() {
 	}
 	updateObject(spaceship);
 	drawObject(spaceship);
-	updateObject(bullet);
-	drawObject(bullet);
+	
+	bullets.forEach(bullet => {
+		updateObject(bullet);
+		drawObject(bullet);
+		checkBulletOutsideBounds(bullet);
+	});
 }
 
 function updateObject(o) {
@@ -113,20 +141,48 @@ function updateObject(o) {
 	o.rot += o.drot;	
 }
 
-const checkCollision = which => {
-	return which === 1 ? algo() : algo2();
+const checkBulletOutsideBounds = b => {
+	if (b.x < 0 || b.x > 600 || b.y < 0 || b.y > 600) {
+		bullets.splice(bullets.indexOf(b), 1);
+	}
 }
 
-const algo2 = () => {
+const checkCollision = which => {
+	return which === 1 ? checkVectorSides() : raycastCheckIntersections();
+}
+
+const is_inside = (edges, xp, yp) => {
+	let count = 0;
+	edges.forEach(({x0, y0, x1, y1}) => {
+		if ((yp < y0) != (yp < y1) && xp < x0 + ((yp-y0)/(y1-y0))*(x1-x0))
+			count++;
+	})
+
+	return count % 2 == 1;
+}
+
+const raycastCheckIntersections = (compared, against) => {
 	let ret = false;
 	let edges = [];
-	let spaceshipVs = [];
-	spaceship.vertices.forEach((v, i) => spaceshipVs[i] = getTransformedVertex(v, spaceship));
+	let eVs = [];
+	
+	if (Array.isArray(compared)) {
+		compared.forEach(e => {
+			e.vertices.forEach((vertex, i) => 
+				eVs[i] = getTransformedVertex(vertex, e)
+			);
+		})
+	}
+	else {
+		compared.vertices.forEach((vertex, i) => 
+			eVs[i] = getTransformedVertex(vertex, compared)
+		);
+	}
 
-	asteroids.forEach(asteroid => {
+	against.forEach(e => {
 		let v = [];
-		asteroid.vertices.forEach((vertex, i) => 
-			v[i] = getTransformedVertex(vertex, asteroid)
+		e.vertices.forEach((vertex, i) => 
+			v[i] = getTransformedVertex(vertex, e)
 		);
 		const len = v.length;
 
@@ -142,17 +198,7 @@ const algo2 = () => {
 			}
 		}
 
-		const is_inside = (edges, xp, yp) => {
-			let count = 0;
-			edges.forEach(({x0, y0, x1, y1}) => {
-				if ((yp < y0) != (yp < y1) && xp < x0 + ((yp-y0)/(y1-y0))*(x1-x0))
-					count++;
-			})
-
-			return count % 2 == 1;
-		}
-
-		spaceshipVs.forEach((v, i) => {
+		eVs.forEach((v, i) => {
 			if (is_inside(edges, v.x, v.y))
 				return ret = true;
 		})
@@ -162,7 +208,7 @@ const algo2 = () => {
 }
 
 
-const algo = () => {
+const checkVectorSides = () => {
 	let ret = false;
 	asteroids.forEach(asteroid => {
 		let ref = [];

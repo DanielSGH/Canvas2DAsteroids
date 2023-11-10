@@ -9,10 +9,13 @@ var spaceship;
 var bulletsVertices = [];
 var bullets = [];
 const BULLET_SPEED = 15;
+let lives = 3;
+let timeout = null;
+let isDead = false;
 
 function init() {
 	canvas = document.getElementById("canvas");
-	ctx = canvas.getContext("2d");	
+	ctx = canvas.getContext("2d");
 
 	asteroidVertices.push({x:-1, y:2});
 	asteroidVertices.push({x:3, y:1});
@@ -35,8 +38,21 @@ function init() {
 	gameLoop();
 }
 
+const reset = () => {
+	window.clearTimeout(timeout);
+	asteroids = [];
+	spaceship = null;
+	bullets = [];
+	isDead = false;
+	spawnSpaceship();
+	spawnAsteroids();
+	gameLoop();
+}
+
 function setKeyHandlers() {
 	document.onkeydown = function(event) {
+		if (isDead) return;
+		
 		var code = (event.keyCode || event.charCode);
 		if (code==37) // left arrow
 			spaceship.drot = -0.2;
@@ -44,11 +60,14 @@ function setKeyHandlers() {
 			spaceship.drot = 0.2;
 		else if (code==38) // up arrow
 			spaceship.thrust = true;
-		else if (code==32)
+		else if (code==32) { // space bar
 			shootBullet();
+		}
 	};
 
 	document.onkeyup = function(event) {
+		if (isDead) return;
+
 		var code = (event.keyCode || event.charCode);
 		if (code==37 || code==39)
 			spaceship.drot = 0;
@@ -76,10 +95,6 @@ function spawnSpaceship() {
 const shootBullet = () => {
 	const frontLocation = getTransformedVertex(spaceshipVertices[0], spaceship);
 
-	const cap = (val, max) => {
-		return val > max ? max : val;
-	}
-
 	// spawn bullet with set velocity pointing at the same direction as the spaceship and firing in that direction
 	const bullet = {
 		x: frontLocation.x, 
@@ -97,14 +112,19 @@ const shootBullet = () => {
 }
 
 function gameLoop() {
-	window.setTimeout(gameLoop, 1000/30);
+	timeout = window.setTimeout(gameLoop, 1000/30);
 	
-	// console.log(checkCollision(2));
-	raycastCheckIntersections(spaceship, asteroids);
-	raycastCheckIntersections(bullets, asteroids);
-	
+	if (raycastCheckIntersections(spaceship, asteroids) && !isDead) {
+		isDead = true;
+		playDeathAnimation();
+		setTimeout(reset, 2000);
+	}
 
-	ctx.fillStyle = "rgb(190,190,190)";
+	const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
+	if (collidedAsteroid.x) 
+		splitAsteroid(collidedAsteroid);
+
+	ctx.fillStyle = "rgb(190,190,190)"; 
 	ctx.fillRect (0, 0, 600, 600);
 
 	for (var i=0; i<asteroids.length; i++) {
@@ -127,22 +147,52 @@ function gameLoop() {
 	});
 }
 
-function updateObject(o) {
-	o.x += o.dx;
-	o.y += o.dy;
-	if (o.x<-20)
-		o.x += 640;
-	else if (o.x>620)
-		o.x -= 640;
-	if (o.y<-20)
-		o.y += 640;
-	else if (o.y>620)
-		o.y -= 640;
-	o.rot += o.drot;	
+const playDeathAnimation = () => {
+	spaceship.vertices = [
+		{x: 0, y: 1},
+		{x: 2, y: 1},
+		{x: 0, y: -1},
+		{x: -2, y: -2}
+	]
+
+	spaceship.dx = 0;
+	spaceship.dy = 0;
+	spaceship.drot = 0.4;
+}
+
+// split the asteroid into 4 smaller asteroids
+const splitAsteroid = asteroid => {
+	if (asteroid.scale < 10) {
+		asteroids.splice(asteroids.indexOf(asteroid), 1);
+		return;
+	}
+
+	bullets.splice(0, 1);
+	
+	// remove the asteroid from the array
+	asteroids.splice(asteroids.indexOf(asteroid), 1);
+
+	const num = randomBetween(1, 4);
+
+	// create 4 smaller asteroids
+	for (let i = 0; i < num; i++) {
+		const a = {	
+			x: asteroid.x, 
+			y: asteroid.y, 
+			rot: Math.random()*2*Math.PI, 
+			scale: asteroid.scale/2, 
+			dx: (Math.random()-0.5)*10, 
+			dy: (Math.random()-0.5)*10, 
+			drot: (Math.random()-0.5)*0.2,
+			vertices: asteroidVertices
+		};
+		asteroids.push(a);
+	}
 }
 
 const checkBulletOutsideBounds = b => {
-	if (b.x < 0 || b.x > 600 || b.y < 0 || b.y > 600) {
+	const scale = b.scale;
+	if (b.x < 0 - scale || b.x > 600 + scale || b.y < 0 - scale || b.y > 600 + scale) {
 		bullets.splice(bullets.indexOf(b), 1);
 	}
 }
@@ -200,7 +250,7 @@ const raycastCheckIntersections = (compared, against) => {
 
 		eVs.forEach((v, i) => {
 			if (is_inside(edges, v.x, v.y))
-				return ret = true;
+				return ret = e;
 		})
 	})
 
@@ -266,6 +316,20 @@ function drawObject(o) {
 	ctx.stroke();	
 }
 
+function updateObject(o) {
+	o.x += o.dx;
+	o.y += o.dy;
+	if (o.x<-20)
+		o.x += 640;
+	else if (o.x>620)
+		o.x -= 640;
+	if (o.y<-20)
+		o.y += 640;
+	else if (o.y>620)
+		o.y -= 640;
+	o.rot += o.drot;	
+}
+
 function getTransformedVertex(vertex, object) {
 	// rotate
 	var x = vertex.x * Math.cos(object.rot) - vertex.y * Math.sin(object.rot);
@@ -278,6 +342,10 @@ function getTransformedVertex(vertex, object) {
 	y += object.y;
 
 	return {x:x, y:y};
+}
+
+const randomBetween = (min, max) => {
+	return Math.floor(Math.random() * (max - min + 1) + min);
 }
 </script>
 </head>

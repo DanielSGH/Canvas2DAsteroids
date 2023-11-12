@@ -12,6 +12,8 @@ const BULLET_SPEED = 15;
 let lives = 3;
 let timeout = null;
 let isDead = false;
+let round;
+let score;
 
 function init() {
 	canvas = document.getElementById("canvas");
@@ -32,6 +34,9 @@ function init() {
 	bulletsVertices.push({x: 0, y: 1});
 	bulletsVertices.push({x: 0, y: 0})
 
+	round = 0;
+	score = 0;
+
 	spawnSpaceship();
 	setKeyHandlers();
 	spawnAsteroids();
@@ -47,6 +52,24 @@ const reset = () => {
 	spawnSpaceship();
 	spawnAsteroids();
 	gameLoop();
+}
+
+const gameOver = () => {
+	lives = 3;
+	round = 0;
+	score = 0;
+	reset();
+}
+
+const die = () => {
+	isDead = true;
+	if (--lives === 0) {
+		alert("Game Over!");
+		gameOver();
+		return;
+	}
+	playDeathAnimation();
+	setTimeout(reset, 2000);
 }
 
 function setKeyHandlers() {
@@ -80,7 +103,7 @@ function spawnAsteroids() {
 	for (var i=0; i<10; i++) {
 		var a = {	
 					x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
-					scale:5+Math.random()*15, 
+					scale:(5+Math.random()*15) + 3*round, 
 					dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, drot:(Math.random()-0.5)*0.2,
 					vertices:asteroidVertices
 				};
@@ -112,16 +135,19 @@ const shootBullet = () => {
 }
 
 function gameLoop() {
-	timeout = window.setTimeout(gameLoop, 1000/30);
-	
-	if (raycastCheckIntersections(spaceship, asteroids) && !isDead) {
-		isDead = true;
-		playDeathAnimation();
-		setTimeout(reset, 2000);
+	timeout = window.setTimeout(gameLoop, 1000/30);	
+
+	if (asteroids.length === 0) {
+		round++;
+		spawnAsteroids();
+		return;
 	}
+	
+	if (raycastCheckIntersections(spaceship, asteroids) && !isDead)
+		die();
 
 	const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
-	if (collidedAsteroid.x) 
+	if (!!collidedAsteroid)
 		splitAsteroid(collidedAsteroid);
 
 	ctx.fillStyle = "rgb(190,190,190)"; 
@@ -132,7 +158,6 @@ function gameLoop() {
 		drawObject(asteroids[i]);
 	}
 	
-
 	if (spaceship.thrust) {
 		spaceship.dx -= Math.sin(spaceship.rot);
 		spaceship.dy += Math.cos(spaceship.rot);
@@ -145,6 +170,10 @@ function gameLoop() {
 		drawObject(bullet);
 		checkBulletOutsideBounds(bullet);
 	});
+
+	ctx.font = "20px Arial";
+	ctx.fillStyle = "black";
+	ctx.fillText("Lives: " + lives + "    Round: " + round + "    Score: " + score, 5, 20);
 }
 
 const playDeathAnimation = () => {
@@ -162,19 +191,20 @@ const playDeathAnimation = () => {
 
 // split the asteroid into 4 smaller asteroids
 const splitAsteroid = asteroid => {
+	bullets.splice(0, 1);
+
 	if (asteroid.scale < 10) {
 		asteroids.splice(asteroids.indexOf(asteroid), 1);
+		score += 20;
 		return;
 	}
-
-	bullets.splice(0, 1);
 	
 	// remove the asteroid from the array
 	asteroids.splice(asteroids.indexOf(asteroid), 1);
 
 	const num = randomBetween(1, 4);
 
-	// create 4 smaller asteroids
+	// create smaller asteroid(s) in same location
 	for (let i = 0; i < num; i++) {
 		const a = {	
 			x: asteroid.x, 
@@ -188,6 +218,8 @@ const splitAsteroid = asteroid => {
 		};
 		asteroids.push(a);
 	}
+
+	score += 10;
 }
 
 const checkBulletOutsideBounds = b => {
@@ -218,21 +250,21 @@ const raycastCheckIntersections = (compared, against) => {
 	
 	if (Array.isArray(compared)) {
 		compared.forEach(e => {
-			e.vertices.forEach((vertex, i) => 
-				eVs[i] = getTransformedVertex(vertex, e)
+			e.vertices.forEach(vertex => 
+				eVs.push(getTransformedVertex(vertex, e))
 			);
 		})
 	}
 	else {
-		compared.vertices.forEach((vertex, i) => 
-			eVs[i] = getTransformedVertex(vertex, compared)
+		compared.vertices.forEach(vertex => 
+			eVs.push(getTransformedVertex(vertex, compared))
 		);
 	}
 
 	against.forEach(e => {
 		let v = [];
-		e.vertices.forEach((vertex, i) => 
-			v[i] = getTransformedVertex(vertex, e)
+		e.vertices.forEach(vertex => 
+			v.push(getTransformedVertex(vertex, e))
 		);
 		const len = v.length;
 
@@ -249,14 +281,14 @@ const raycastCheckIntersections = (compared, against) => {
 		}
 
 		eVs.forEach((v, i) => {
-			if (is_inside(edges, v.x, v.y))
+			if (is_inside(edges, v.x, v.y)) {
 				return ret = e;
+			}
 		})
 	})
 
 	return ret;
 }
-
 
 const checkVectorSides = () => {
 	let ret = false;

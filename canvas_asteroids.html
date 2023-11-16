@@ -8,7 +8,12 @@ var spaceshipVertices = [];
 var spaceship;
 var bulletsVertices = [];
 var bullets = [];
+var alienshipVertices = [];
+var alienship;
+var alienshipBullets = [];
 const BULLET_SPEED = 15;
+let alienDeadTime = 0;
+let alienAliveTime = 0;
 let lives = 3;
 let timeout = null;
 let isDead = false;
@@ -34,6 +39,18 @@ function init() {
 	bulletsVertices.push({x: 0, y: 1});
 	bulletsVertices.push({x: 0, y: 0})
 
+	alienshipVertices.push({x: 1, y: -1});
+	alienshipVertices.push({x: -1, y: -1});
+	alienshipVertices.push({x: -2, y: 0});
+	alienshipVertices.push({x: -2, y: 1});
+	alienshipVertices.push({x: -3, y: 1});
+	alienshipVertices.push({x: -2, y: 2});
+	alienshipVertices.push({x: 2, y: 2});
+	alienshipVertices.push({x: 3, y: 1});
+	alienshipVertices.push({x: 2, y: 1});
+	alienshipVertices.push({x: 2, y: 0});
+	alienshipVertices.push({x: 1, y: -1});
+
 	round = 0;
 	score = 0;
 
@@ -49,8 +66,11 @@ const reset = () => {
 	spaceship = null;
 	bullets = [];
 	isDead = false;
+	alienDeadTime = 0;
 	spawnSpaceship();
 	spawnAsteroids();
+	spawnAlienship();
+	removeAlienship();
 	gameLoop();
 }
 
@@ -84,7 +104,7 @@ function setKeyHandlers() {
 		else if (code==38) // up arrow
 			spaceship.thrust = true;
 		else if (code==32) { // space bar
-			shootBullet();
+			shootBullet({...getTransformedVertex(spaceshipVertices[0], spaceship), rot:spaceship.rot}, bullets);
 		}
 	};
 
@@ -100,7 +120,7 @@ function setKeyHandlers() {
 }
 
 function spawnAsteroids() {
-	for (var i=0; i<10; i++) {
+	for (var i=0; i<1; i++) {
 		var a = {	
 					x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
 					scale:(5+Math.random()*15) + 3*round, 
@@ -115,23 +135,25 @@ function spawnSpaceship() {
 	spaceship = {x:300, y:300, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:spaceshipVertices, thrust:false};
 }
 
-const shootBullet = () => {
-	const frontLocation = getTransformedVertex(spaceshipVertices[0], spaceship);
+const spawnAlienship = () => {
+	alienship = {x:spaceship.x-5, y:150, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:alienshipVertices, bullets:[]};
+}
 
+const shootBullet = (from, array) => {
 	// spawn bullet with set velocity pointing at the same direction as the spaceship and firing in that direction
 	const bullet = {
-		x: frontLocation.x, 
-		y: frontLocation.y, 
-		rot: spaceship.rot, 
+		x: from.x, 
+		y: from.y, 
+		rot: from.rot, 
 		scale: 5, 
-		dx: -Math.sin(spaceship.rot)*BULLET_SPEED,
-		dy: Math.cos(spaceship.rot)*BULLET_SPEED, 
+		dx: -Math.sin(from.rot)*BULLET_SPEED,
+		dy: Math.cos(from.rot)*BULLET_SPEED, 
 		drot: 0, 
 		vertices: bulletsVertices
 	}
 
 	// var bullet = {x:frontLocation.x, y:frontLocation.y, rot:spaceship.rot, scale:10, dx:0, dy:0, drot:0, vertices:bulletsVertices};
-	bullets.push(bullet);
+	array.push(bullet);
 }
 
 function gameLoop() {
@@ -142,13 +164,23 @@ function gameLoop() {
 		spawnAsteroids();
 		return;
 	}
-	
-	if (raycastCheckIntersections(spaceship, asteroids) && !isDead)
-		die();
 
-	const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
-	if (!!collidedAsteroid)
-		splitAsteroid(collidedAsteroid);
+	if (!alienship) alienDeadTime++;
+	else alienAliveTime++;
+	if (alienDeadTime >= 0 && !alienship) {
+		spawnAlienship();
+		alienDeadTime = 0;
+	}
+
+	// TODO: This sucks a lot. Make it so that the alienship has its own kind of bullet that is a closed shape, i.e, a triangle
+	console.log(raycastCheckIntersections(spaceship, alienshipBullets));
+	
+	// if (raycastCheckIntersections(spaceship, asteroids) && !isDead)
+	// 	die();
+
+	// const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
+	// if (!!collidedAsteroid)
+	// 	splitAsteroid(collidedAsteroid);
 
 	ctx.fillStyle = "rgb(190,190,190)"; 
 	ctx.fillRect (0, 0, 600, 600);
@@ -162,13 +194,31 @@ function gameLoop() {
 		spaceship.dx -= Math.sin(spaceship.rot);
 		spaceship.dy += Math.cos(spaceship.rot);
 	}
+
 	updateObject(spaceship);
 	drawObject(spaceship);
 	
 	bullets.forEach(bullet => {
 		updateObject(bullet);
 		drawObject(bullet);
-		checkBulletOutsideBounds(bullet);
+		checkOutsideBounds(bullet, removeSpaceshipBullet);
+	});
+
+	if (alienAliveTime >= 5 && !!alienship) {
+		shootBullet(alienship, alienshipBullets);
+		alienAliveTime = 0;
+	}
+	
+	if (!!alienship) {
+		updateObject(alienship);
+		drawObject(alienship);
+		checkOutsideBounds(alienship, removeAlienship);
+	}	
+
+	alienshipBullets.forEach(bullet => {
+		updateObject(bullet);
+		drawObject(bullet);
+		checkOutsideBounds(bullet, removeAlienshipBullet);
 	});
 
 	ctx.font = "20px Arial";
@@ -222,11 +272,27 @@ const splitAsteroid = asteroid => {
 	score += 10;
 }
 
-const checkBulletOutsideBounds = b => {
+const checkOutsideBounds = (b, func) => {
 	const scale = b.scale;
-	if (b.x < 0 - scale || b.x > 600 + scale || b.y < 0 - scale || b.y > 600 + scale) {
-		bullets.splice(bullets.indexOf(b), 1);
+	const check = b.x < 0 - scale || b.x > 600 + scale || b.y < 0 - scale || b.y > 600 + scale;
+
+	if (check) {
+		func(b);
 	}
+
+	return check;
+}
+
+const removeSpaceshipBullet = b => {
+	bullets.splice(bullets.indexOf(b), 1);
+}
+
+const removeAlienshipBullet = b => {
+	alienshipBullets.splice(alienshipBullets.indexOf(b), 1);
+}
+
+const removeAlienship = () => {
+	alienship = null;
 }
 
 const checkCollision = which => {

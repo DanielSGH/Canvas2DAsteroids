@@ -11,14 +11,19 @@ var bullets = [];
 var alienshipVertices = [];
 var alienship;
 var alienshipBullets = [];
-const BULLET_SPEED = 15;
+
 let alienDeadTime = 0;
 let alienAliveTime = 0;
 let lives = 3;
+
 let timeout = null;
 let isDead = false;
 let round;
 let score;
+
+const BULLET_SPEED = 15;
+const ALIENSHIP_RESPAWN_AFTER_MS = 180;
+const ALIENSHIP_SHOOT_AFTER_MS = 10;
 
 function init() {
 	canvas = document.getElementById("canvas");
@@ -65,11 +70,11 @@ const reset = () => {
 	asteroids = [];
 	spaceship = null;
 	bullets = [];
+    alienshipBullets = [];
 	isDead = false;
 	alienDeadTime = 0;
 	spawnSpaceship();
 	spawnAsteroids();
-	spawnAlienship();
 	removeAlienship();
 	gameLoop();
 }
@@ -95,15 +100,15 @@ const die = () => {
 function setKeyHandlers() {
 	document.onkeydown = function(event) {
 		if (isDead) return;
-		
+
 		var code = (event.keyCode || event.charCode);
-		if (code==37) // left arrow
+		if (code===37) // left arrow
 			spaceship.drot = -0.2;
-		else if (code==39) // right arrow
+		else if (code===39) // right arrow
 			spaceship.drot = 0.2;
-		else if (code==38) // up arrow
+		else if (code===38) // up arrow
 			spaceship.thrust = true;
-		else if (code==32) { // space bar
+		else if (code===32) { // space bar
 			shootBullet({...getTransformedVertex(spaceshipVertices[0], spaceship), rot:spaceship.rot}, bullets);
 		}
 	};
@@ -112,18 +117,18 @@ function setKeyHandlers() {
 		if (isDead) return;
 
 		var code = (event.keyCode || event.charCode);
-		if (code==37 || code==39)
+		if (code===37 || code===39)
 			spaceship.drot = 0;
-		else if (code==38)
+		else if (code===38)
 			spaceship.thrust = false;
 	};
 }
 
 function spawnAsteroids() {
 	for (var i=0; i<1; i++) {
-		var a = {	
-					x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI, 
-					scale:(5+Math.random()*15) + 3*round, 
+		var a = {
+					x:Math.random()*600, y:Math.random()*600, rot:Math.random()*2*Math.PI,
+					scale:(5+Math.random()*15) + 3*round,
 					dx:(Math.random()-0.5)*10, dy:(Math.random()-0.5)*10, drot:(Math.random()-0.5)*0.2,
 					vertices:asteroidVertices
 				};
@@ -136,19 +141,19 @@ function spawnSpaceship() {
 }
 
 const spawnAlienship = () => {
-	alienship = {x:spaceship.x-5, y:150, rot:0, scale:10, dx:0, dy:0, drot:0, vertices:alienshipVertices, bullets:[]};
+	alienship = {x:0, y:150, rot:0, scale:10, dx:15, dy:0, drot:0, vertices:alienshipVertices, bullets:[]};
 }
 
 const shootBullet = (from, array) => {
 	// spawn bullet with set velocity pointing at the same direction as the spaceship and firing in that direction
 	const bullet = {
-		x: from.x, 
-		y: from.y, 
-		rot: from.rot, 
-		scale: 5, 
+		x: from.x,
+		y: from.y,
+		rot: from.rot,
+		scale: 5,
 		dx: -Math.sin(from.rot)*BULLET_SPEED,
-		dy: Math.cos(from.rot)*BULLET_SPEED, 
-		drot: 0, 
+		dy: Math.cos(from.rot)*BULLET_SPEED,
+		drot: 0,
 		vertices: bulletsVertices
 	}
 
@@ -157,39 +162,41 @@ const shootBullet = (from, array) => {
 }
 
 function gameLoop() {
-	timeout = window.setTimeout(gameLoop, 1000/30);	
+	timeout = window.setTimeout(gameLoop, 1000/30);
 
 	if (asteroids.length === 0) {
+        alienDeadTime = 0;
 		round++;
 		spawnAsteroids();
 		return;
 	}
 
-	if (!alienship) alienDeadTime++;
+	if (!alienship && !isDead) alienDeadTime++;
 	else alienAliveTime++;
-	if (alienDeadTime >= 0 && !alienship) {
+	if (alienDeadTime >= ALIENSHIP_RESPAWN_AFTER_MS && !alienship) {
 		spawnAlienship();
 		alienDeadTime = 0;
 	}
 
-	// TODO: This sucks a lot. Make it so that the alienship has its own kind of bullet that is a closed shape, i.e, a triangle
-	console.log(raycastCheckIntersections(spaceship, alienshipBullets));
-	
-	// if (raycastCheckIntersections(spaceship, asteroids) && !isDead)
-	// 	die();
+    if (alienAliveTime % ALIENSHIP_SHOOT_AFTER_MS === 0 && !!alienship) {
+        shootBullet(alienship, alienshipBullets);
+    }
 
-	// const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
-	// if (!!collidedAsteroid)
-	// 	splitAsteroid(collidedAsteroid);
+	if ((raycastCheckIntersections(spaceship, asteroids) || raycastCheckIntersections(alienshipBullets, spaceship) || (!!alienship && raycastCheckIntersections(spaceship, alienship))) && !isDead)
+		die();
 
-	ctx.fillStyle = "rgb(190,190,190)"; 
+	const collidedAsteroid = raycastCheckIntersections(bullets, asteroids);
+	if (collidedAsteroid)
+		splitAsteroid(collidedAsteroid);
+
+	ctx.fillStyle = "rgb(190,190,190)";
 	ctx.fillRect (0, 0, 600, 600);
 
 	for (var i=0; i<asteroids.length; i++) {
-		updateObject(asteroids[i]);	
+		updateObject(asteroids[i]);
 		drawObject(asteroids[i]);
 	}
-	
+
 	if (spaceship.thrust) {
 		spaceship.dx -= Math.sin(spaceship.rot);
 		spaceship.dy += Math.cos(spaceship.rot);
@@ -197,23 +204,18 @@ function gameLoop() {
 
 	updateObject(spaceship);
 	drawObject(spaceship);
-	
+
 	bullets.forEach(bullet => {
 		updateObject(bullet);
 		drawObject(bullet);
 		checkOutsideBounds(bullet, removeSpaceshipBullet);
 	});
 
-	if (alienAliveTime >= 5 && !!alienship) {
-		shootBullet(alienship, alienshipBullets);
-		alienAliveTime = 0;
-	}
-	
 	if (!!alienship) {
 		updateObject(alienship);
 		drawObject(alienship);
 		checkOutsideBounds(alienship, removeAlienship);
-	}	
+	}
 
 	alienshipBullets.forEach(bullet => {
 		updateObject(bullet);
@@ -248,7 +250,7 @@ const splitAsteroid = asteroid => {
 		score += 20;
 		return;
 	}
-	
+
 	// remove the asteroid from the array
 	asteroids.splice(asteroids.indexOf(asteroid), 1);
 
@@ -256,13 +258,13 @@ const splitAsteroid = asteroid => {
 
 	// create smaller asteroid(s) in same location
 	for (let i = 0; i < num; i++) {
-		const a = {	
-			x: asteroid.x, 
-			y: asteroid.y, 
-			rot: Math.random()*2*Math.PI, 
-			scale: asteroid.scale/2, 
-			dx: (Math.random()-0.5)*10, 
-			dy: (Math.random()-0.5)*10, 
+		const a = {
+			x: asteroid.x,
+			y: asteroid.y,
+			rot: Math.random()*2*Math.PI,
+			scale: asteroid.scale/2,
+			dx: (Math.random()-0.5)*10,
+			dy: (Math.random()-0.5)*10,
 			drot: (Math.random()-0.5)*0.2,
 			vertices: asteroidVertices
 		};
@@ -288,130 +290,143 @@ const removeSpaceshipBullet = b => {
 }
 
 const removeAlienshipBullet = b => {
-	alienshipBullets.splice(alienshipBullets.indexOf(b), 1);
+    alienshipBullets.splice(alienshipBullets.indexOf(b), 1);
 }
 
 const removeAlienship = () => {
-	alienship = null;
-}
-
-const checkCollision = which => {
-	return which === 1 ? checkVectorSides() : raycastCheckIntersections();
+	console.log("I am called!");
+    if (alienAliveTime >= 10) {
+        alienship = null;
+        alienAliveTime = 0;
+    }
 }
 
 const is_inside = (edges, xp, yp) => {
 	let count = 0;
 	edges.forEach(({x0, y0, x1, y1}) => {
-		if ((yp < y0) != (yp < y1) && xp < x0 + ((yp-y0)/(y1-y0))*(x1-x0))
+		if ((yp < y0) !== (yp < y1) && xp < x0 + ((yp-y0)/(y1-y0))*(x1-x0))
 			count++;
 	})
 
-	return count % 2 == 1;
+	return count % 2 === 1;
+}
+
+function verticesInPolygon(v, comparedVertices, ret, e) {
+    let edges = [];
+
+    for (let i = 0; i < v.length; i++) {
+        const from = v[i];
+        const to = v[(i + 1) % v.length];
+
+        edges[i] = {
+            x0: from.x,
+            y0: from.y,
+            x1: to.x,
+            y1: to.y
+        }
+    }
+
+    comparedVertices.forEach(v => {
+        if (is_inside(edges, v.x, v.y)) {
+            return ret = e;
+        }
+    })
+    return ret;
 }
 
 const raycastCheckIntersections = (compared, against) => {
 	let ret = false;
-	let edges = [];
-	let eVs = [];
-	
-	if (Array.isArray(compared)) {
-		compared.forEach(e => {
-			e.vertices.forEach(vertex => 
-				eVs.push(getTransformedVertex(vertex, e))
-			);
-		})
-	}
-	else {
-		compared.vertices.forEach(vertex => 
-			eVs.push(getTransformedVertex(vertex, compared))
+	let comparedVertices = [];
+	let againstVertices = [];
+
+	if (Array.isArray(compared))
+		compared.forEach(e =>
+			e.vertices.forEach(vertex =>
+				comparedVertices.push(getTransformedVertex(vertex, e))
+			)
 		);
+	else
+		compared.vertices.forEach(vertex =>
+			comparedVertices.push(getTransformedVertex(vertex, compared))
+		);
+
+
+	if (!Array.isArray(against)) {
+		against.vertices.forEach(v =>
+			againstVertices.push(getTransformedVertex(v, against))
+		)
+
+		return verticesInPolygon(againstVertices, comparedVertices, ret, true);
 	}
 
-	against.forEach(e => {
-		let v = [];
-		e.vertices.forEach(vertex => 
-			v.push(getTransformedVertex(vertex, e))
-		);
-		const len = v.length;
+    against.forEach(e => {
+        let v = [];
+        e.vertices.forEach(vertex =>
+            v.push(getTransformedVertex(vertex, e))
+        );
 
-		for (let i = 0; i < len; i++) {
-			const from = v[i];
-			const to = v[(i+1) % len];
-
-			edges[i] = {
-				x0: from.x, 
-				y0: from.y, 
-				x1: to.x, 
-				y1: to.y
-			}
-		}
-
-		eVs.forEach((v, i) => {
-			if (is_inside(edges, v.x, v.y)) {
-				return ret = e;
-			}
-		})
-	})
+        ret = verticesInPolygon(v, comparedVertices, ret, e);
+    })
 
 	return ret;
 }
 
-const checkVectorSides = () => {
-	let ret = false;
-	asteroids.forEach(asteroid => {
-		let ref = [];
-		asteroid.vertices.forEach((v, i) => 
-			ref[i] = getTransformedVertex(v, asteroid)
-		);
-
-		const len = ref.length;
-		const calcs = [];
-
-		for (let i = 0; i < len; i++) {
-			const from = ref[i];
-			const to = ref[(i+1) % len];
-
-			const x0 = from.x;
-			const y0 = from.y;
-			const x1 = to.x;
-			const y1 = to.y;
-			
-			let arr = [];
-			spaceship.vertices.forEach((v, i) => {
-				const p = getTransformedVertex((v), spaceship);
-				arr[i] = (p.y-y0)*(x1-x0)-(p.x-x0)*(y1-y0);
-			})
-
-			calcs.push(arr);
-		}
-
-		for (let i = 0; i < calcs[0].length; i++) {
-			let arr = [];
-			for (let j = 0; j < calcs.length; j++) {
-				arr[j] = calcs[j][i];
-			}
-			if (Math.max.apply(Math, arr) < 0) {
-				return ret = true;
-			}
-			arr = [];
-		}
-	})
-	return ret;
-}
+// const checkVectorSides = () => {
+// 	let ret = false;
+// 	asteroids.forEach(asteroid => {
+// 		let ref = [];
+// 		asteroid.vertices.forEach((v, i) =>
+// 			ref[i] = getTransformedVertex(v, asteroid)
+// 		);
+//
+// 		const len = ref.length;
+// 		const calcs = [];
+//
+// 		for (let i = 0; i < len; i++) {
+// 			const from = ref[i];
+// 			const to = ref[(i+1) % len];
+//
+// 			const x0 = from.x;
+// 			const y0 = from.y;
+// 			const x1 = to.x;
+// 			const y1 = to.y;
+//
+// 			let arr = [];
+// 			spaceship.vertices.forEach((v, i) => {
+// 				const p = getTransformedVertex((v), spaceship);
+// 				arr[i] = (p.y-y0)*(x1-x0)-(p.x-x0)*(y1-y0);
+// 			})
+//
+// 			calcs.push(arr);
+// 		}
+//
+// 		for (let i = 0; i < calcs[0].length; i++) {
+// 			let arr = [];
+// 			for (let j = 0; j < calcs.length; j++) {
+// 				arr[j] = calcs[j][i];
+// 			}
+// 			if (Math.max.apply(Math, arr) < 0) {
+// 				return ret = true;
+// 			}
+// 			arr = [];
+// 		}
+// 	})
+// 	return ret;
+// }
 
 function drawObject(o) {
-	var pt = getTransformedVertex(o.vertices[0], o); 
+	var pt = getTransformedVertex(o.vertices[0], o);
 	ctx.beginPath();
 	ctx.moveTo(pt.x, pt.y);
 
 	for (var i=1; i<o.vertices.length; i++) {
-		var pt2 = getTransformedVertex(o.vertices[i], o); 
+		var pt2 = getTransformedVertex(o.vertices[i], o);
 		ctx.lineTo(pt2.x, pt2.y);
 	}
 
 	ctx.lineTo(pt.x, pt.y);
 
-	ctx.stroke();	
+	ctx.stroke();
 }
 
 function updateObject(o) {
@@ -425,7 +440,7 @@ function updateObject(o) {
 		o.y += 640;
 	else if (o.y>620)
 		o.y -= 640;
-	o.rot += o.drot;	
+	o.rot += o.drot;
 }
 
 function getTransformedVertex(vertex, object) {
